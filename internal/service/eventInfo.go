@@ -2,14 +2,12 @@ package service
 
 // 专门负责处理发送到stream的信息的一些函数
 import (
-	"context"
+	"QA-System/plugins"
 	"time"
-
-	pkg "QA-System/internal/pkg/redis"
 )
 
-// FromSurveyIDToStream 通过问卷ID将问卷信息发送到Redis Stream
-func FromSurveyIDToStream(surveyID int) error {
+// FromSurveyIDToMsg 通过问卷ID将问卷信息发送到消息队列（直接发给插件好啦）
+func FromSurveyIDToMsg(surveyID int) error {
 	// 获取问卷信息
 	survey, err := GetSurveyByID(surveyID)
 	if err != nil {
@@ -27,7 +25,14 @@ func FromSurveyIDToStream(surveyID int) error {
 		"timestamp":     time.Now().UnixNano(),
 	}
 
-	// 发送到Redis Stream
-	err = pkg.PublishToStream(context.Background(), data)
-	return err
+	// 使用 BetterEmailNotifier 发送邮件
+	err = plugins.BetterEmailNotify(data)
+
+	return nil
 }
+
+// // 发送到Redis Stream
+// err = pkg.PublishToStream(context.Background(), data)
+// if err != nil {
+// 	return err
+// }

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"QA-System/internal/global/config"
-	"QA-System/internal/pkg/extension"
 	"QA-System/internal/pkg/redis"
+	"QA-System/pkg/extension"
 
 	redisv9 "github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -37,25 +37,25 @@ func init() {
 		consumerNew: "consumerNew",
 	}
 	if err := notifier.initialize(); err != nil {
-		panic(fmt.Sprintf("Failed to initialize email_notifier: %v", err))
+		panic(fmt.Sprintf("Failed to initialize emailnotifier: %v", err))
 	}
-	extension.RegisterPlugin(notifier)
+	extension.GetDefaultManager().RegisterPlugin(notifier)
 }
 
 // initialize 从配置文件中读取配置信息
 func (p *EmailNotifier) initialize() error {
 	// 读取SMTP配置
-	p.smtpHost = config.Config.GetString("email_notifier.smtp.host")
-	p.smtpPort = config.Config.GetInt("email_notifier.smtp.port")
-	p.smtpUsername = config.Config.GetString("email_notifier.smtp.username")
-	p.smtpPassword = config.Config.GetString("email_notifier.smtp.password")
-	p.from = config.Config.GetString("email_notifier.smtp.from")
+	p.smtpHost = config.Config.GetString("emailnotifier.smtp.host")
+	p.smtpPort = config.Config.GetInt("emailnotifier.smtp.port")
+	p.smtpUsername = config.Config.GetString("emailnotifier.smtp.username")
+	p.smtpPassword = config.Config.GetString("emailnotifier.smtp.password")
+	p.from = config.Config.GetString("emailnotifier.smtp.from")
 
 	if p.smtpHost == "" || p.smtpUsername == "" || p.smtpPassword == "" || p.from == "" {
 		return errors.New("invalid SMTP configuration, this may lead to email sending failure")
 	}
 
-	// 读取Stream配置
+	// 读取Stream配置（已准备弃用）
 	p.streamName = config.Config.GetString("redis.stream.name")
 	p.groupName = config.Config.GetString("redis.stream.group")
 
@@ -64,7 +64,7 @@ func (p *EmailNotifier) initialize() error {
 	}
 
 	// 读取工作协程配置
-	p.workerNum = config.Config.GetInt("email_notifier.worker.num")
+	p.workerNum = config.Config.GetInt("emailnotifier.worker.num")
 	if p.workerNum <= 0 {
 		p.workerNum = 3 // 默认3个工作协程
 	}
@@ -76,7 +76,7 @@ func (p *EmailNotifier) initialize() error {
 func (p *EmailNotifier) GetMetadata() extension.PluginMetadata {
 	_ = p
 	return extension.PluginMetadata{
-		Name:        "email_notifier",
+		Name:        "emailNotifier",
 		Version:     "0.1.0",
 		Author:      "SituChengxiang, Copilot, Qwen2.5, DeepSeek",
 		Description: "Send email notifications for new survey responses",
@@ -85,6 +85,7 @@ func (p *EmailNotifier) GetMetadata() extension.PluginMetadata {
 
 // Execute 启动消费者
 func (p *EmailNotifier) Execute() error {
+	fmt.Println("Another version of the email notifier has been released, you can change to that one as this one relies on redis stream")
 	ctx := context.Background()
 	zap.L().Info("Email notifier started", zap.Int("workers", p.workerNum))
 
@@ -247,8 +248,8 @@ func (p *EmailNotifier) sendEmail(data map[string]any) error {
 			zap.L().Error("Failed to send email", zap.Error(err))
 			return err
 		}
-		// 发送成功后确认消息，用QA系统里的redis包打包里的AckMessage函数，参数少一点
-		err = redis.AckMessage(ctx, data["id"].(string))
+		// // 发送成功后确认消息，用QA系统里的redis包打包里的AckMessage函数，参数少一点
+		// err = redis.AckMessage(ctx, data["id"].(string))
 		if err != nil {
 			zap.L().Warn("Failed to ack message", zap.Error(err))
 		}
