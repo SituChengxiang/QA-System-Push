@@ -250,9 +250,9 @@ func (p *EmailNotifier) sendEmail(data map[string]any) error {
 		}
 		// // 发送成功后确认消息，用QA系统里的redis包打包里的AckMessage函数，参数少一点
 		// err = redis.AckMessage(ctx, data["id"].(string))
-		if err != nil {
-			zap.L().Warn("Failed to ack message", zap.Error(err))
-		}
+		// if err != nil {
+		// 	zap.L().Warn("Failed to ack message", zap.Error(err))
+		// }
 		return nil
 	case <-ctx.Done():
 		return errors.New("send email timeout after 10 seconds")
