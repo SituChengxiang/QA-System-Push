@@ -10,10 +10,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// extension包自己的init函数，用来看一眼extension是不是被导入了
+// extension包自己的init函数，初始化默认插件管理器实例
 func init() {
 	defaultManager = NewPluginManager(zap.NewNop())
-	fmt.Println("插件包加载模块初始化成功 阶梯计划成功")
+	// fmt.Println("插件包加载模块初始化成功 阶梯计划成功")
 }
 
 // PluginManager 插件管理器类

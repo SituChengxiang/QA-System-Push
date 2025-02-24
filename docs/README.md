@@ -10,7 +10,8 @@ QA-System/
 ├── main.go                   # 应用程序的入口点，包含启动服务器的代码
 ├── conf                      # 存放配置文件，如 YAML、JSON 格式的配置
 ├── docs                      # 项目文档，可能包括 API 文档、开发者指南等
-│   └── README.md             # 项目 README 文档
+│   ├── README.md             # 项目 README 文档
+│   └── pluginDevReadMe.md    # 插件开发指北
 ├── go.mod                    # Go Modules 模块依赖文件
 ├── go.sum                    # Go Modules 模块依赖的校验和
 ├── hack                      # 构建脚本、CI 配置和辅助工具
@@ -37,7 +38,8 @@ QA-System/
 ├── LICENSE                   # 项目许可证文件
 ├── Makefile                  # 根 Makefile 文件，包含构建和编译项目的指令
 ├── pkg                       # 可被外部引用的全局工具包
-│   └── util                  # 通用工具代码
+│   ├── util                  # 通用工具代码
+│   └── extension             # 第三方库扩展加载器   
 ├── README.md                  # 项目 README 文档，通常提供项目概览和快速开始指南
 ├── public                    # 公共静态资源，如未构建的前端资源或可直接访问的静态文件
 └── .gitignore                # Git 忽略文件配置

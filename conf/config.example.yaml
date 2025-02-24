@@ -58,24 +58,25 @@ log:
 
 plugins:
   order:
-    - "plugin1"
-    - "plugin2" 
+    # - "plugin1"
+    # - "plugin2" 
     - "betterEmailNotifier"
+# 从上往下执行插件：先执行plugin1，再执行plugin2，以此类推。默认仅保留betterEmailNotifier
 
-# 邮件通知配置
+# 邮件通知配置（下面用QQ邮箱为例，暂时不支持Outlook等需要OAuth2的邮件服务。具体信息可到各邮箱官网查询）
 emailNotifier:
   smtp: 
-    host: "smtp.qq.com"
-    port: 587
-    username: "example@qq.com"
-    password: "hxjrwjzgdxoobdcg"          # 不支持双重验证hxjrwjzgdxoobdcg
+    host: "smtp.qq.com"                        # QQ邮箱SMTP服务器地址
+    port: 587                                  # SMTP服务器端口
+    username: "example@qq.com"                 # QQ邮箱账号
+    password: "this_is_your_password"          # QQ邮箱的授权码，不支持双重验证，所以得用授权码（有些地方也叫应用密码）
     from: "example@qq.com"                
     tinmeout: 10 # 超时时长，单位秒
-  template:                                     # 模板（已弃用）
-    subject: "新问卷回复通知 - {{.survey_title}}"
-    body: "您收到一条新的问卷回复，请及时查看。"
-  worker:                                       # 工作协程（better版本已弃用）
-    num: 3  # 工作协程数量
-  consumer:                                     # 消费者（better版本已弃用）
-    batch_size: 10      # 消费者批量处理数量
-    idle_timeout: 1800  # 超时时长，30分钟，单位秒
+  # template:                                     # 模板（已弃用）
+  #   subject: "新问卷回复通知 - {{.survey_title}}"
+  #   body: "您收到一条新的问卷回复，请及时查看。"
+  # worker:                                       # 工作协程（better版本已弃用）
+  #   num: 3  # 工作协程数量
+  # consumer:                                     # 消费者（better版本已弃用）
+  #   batch_size: 10      # 消费者批量处理数量
+  #   idle_timeout: 1800  # 超时时长，30分钟，单位秒
