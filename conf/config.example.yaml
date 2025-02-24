@@ -1,0 +1,81 @@
+server:
+  port: "8080"
+  debug: false
+
+mysql:
+  name: QA
+  host: "127.0.0.1"
+  port: 3306
+  user: root
+  pass:
+
+
+ session:
+   name: QA-session
+   secret: secret
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  db: 0             #asynq用的是db+1
+  user: root
+  pass:
+
+aes:
+  key:              # AES加密密钥, 16位
+
+jwt:
+  key:              # JWT加密密钥
+
+mongodb:
+  host: "127.0.0.1"
+  port: 27017
+  user: 
+  pass:
+  db: qa
+  qa-collection: qa          # 回答集合
+  record-collection: record  # 记录集合
+
+url:
+  host: "https://example.com"  # 项目地址
+
+key: 
+
+user:
+  host: 
+
+log:
+  development: true        # 是否开启开发模式 true: 开启 false: 关闭
+  disableStacktrace: false # 是否禁用堆栈跟踪
+  encoding: "json"         # 编码格式 json: json格式 console: 控制台格式
+  level: "info"            # 日志级别 debug: 调试 info: 信息 warn: 警告 error: 错误 dpanic: 严重 panic: 恐慌 fatal: 致命
+  name: "4u"               # 日志名称
+  writers: "console,file"  # 日志输出方式 console: 控制台 file: 文件
+  loggerDir: "./logs"      # 日志目录
+  logMaxSize: 10           # 单个日志文件最大大小 单位: MB
+  logMaxAge: 7             # 日志保留天数
+  logCompress: false       # 是否压缩日志文件
+
+plugins:
+  order:
+    - "plugin1"
+    - "plugin2" 
+    - "betterEmailNotifier"
+
+# 邮件通知配置
+emailNotifier:
+  smtp: 
+    host: "smtp.qq.com"
+    port: 587
+    username: "example@qq.com"
+    password: "hxjrwjzgdxoobdcg"          # 不支持双重验证hxjrwjzgdxoobdcg
+    from: "example@qq.com"                
+    tinmeout: 10 # 超时时长，单位秒
+  template:                                     # 模板（已弃用）
+    subject: "新问卷回复通知 - {{.survey_title}}"
+    body: "您收到一条新的问卷回复，请及时查看。"
+  worker:                                       # 工作协程（better版本已弃用）
+    num: 3  # 工作协程数量
+  consumer:                                     # 消费者（better版本已弃用）
+    batch_size: 10      # 消费者批量处理数量
+    idle_timeout: 1800  # 超时时长，30分钟，单位秒

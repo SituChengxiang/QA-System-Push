@@ -74,11 +74,6 @@ func SubmitSurvey(c *gin.Context) {
 			code.AbortWithException(c, code.ServerError, err)
 			return
 		}
-		if question.SerialNum != q.SerialNum {
-			code.AbortWithException(c, code.ServerError,
-				errors.New("问题序号"+strconv.Itoa(question.ID)+"和"+strconv.Itoa(q.SerialNum)+"不一致"))
-			return
-		}
 		if question.SurveyID != survey.ID {
 			code.AbortWithException(c, code.ServerError,
 				errors.New("问题"+strconv.Itoa(question.SerialNum)+"不属于该问卷"))
@@ -87,18 +82,18 @@ func SubmitSurvey(c *gin.Context) {
 		// 判断必填字段是否为空
 		if question.Required && q.Answer == "" {
 			code.AbortWithException(c, code.ServerError,
-				errors.New("问题"+strconv.Itoa(q.SerialNum)+"必填字段为空"))
+				errors.New("问题"+strconv.Itoa(q.QuestionID)+"必填字段为空"))
 			return
 		}
 		// 判断多选题选项数量是否符合要求
 		if (question.QuestionType == 2 && survey.Type == 0) || (question.QuestionType == 1 && survey.Type == 1) {
 			length := uint(len(strings.Split(q.Answer, "┋")))
 			if question.MinimumOption != 0 && length < question.MinimumOption {
-				code.AbortWithException(c, code.OptionNumError, errors.New("问题"+strconv.Itoa(q.SerialNum)+"选项数量不符合要求"))
+				code.AbortWithException(c, code.OptionNumError, errors.New("问题"+strconv.Itoa(q.QuestionID)+"选项数量不符合要求"))
 				return
 			}
 			if question.MaximumOption != 0 && length > question.MaximumOption {
-				code.AbortWithException(c, code.OptionNumError, errors.New("问题"+strconv.Itoa(q.SerialNum)+"选项数量不符合要求"))
+				code.AbortWithException(c, code.OptionNumError, errors.New("问题"+strconv.Itoa(q.QuestionID)+"选项数量不符合要求"))
 				return
 			}
 		}
@@ -109,9 +104,8 @@ func SubmitSurvey(c *gin.Context) {
 		if err != nil && !errors.Is(err, redis.Nil) {
 			code.AbortWithException(c, code.ServerError, err)
 			return
-		} else if errors.Is(err, redis.Nil) {
-			flag = true
 		}
+		flag = errors.Is(err, redis.Nil)
 		if err == nil && limit >= int(survey.DailyLimit) {
 			code.AbortWithException(c, code.VoteLimitError, errors.New("投票次数已达上限"))
 			return
@@ -191,7 +185,7 @@ func GetSurvey(c *gin.Context) {
 		return
 	}
 	// 构建问卷响应
-	questionsResponse := make([]map[string]any, 0)
+	questionListsResponse := make([]map[string]any, 0)
 	for _, question := range questions {
 		options, err := service.GetOptionsByQuestionID(question.ID)
 		if err != nil {
@@ -208,34 +202,46 @@ func GetSurvey(c *gin.Context) {
 			}
 			optionsResponse = append(optionsResponse, optionResponse)
 		}
-		questionMap := map[string]any{
-			"id":             question.ID,
-			"serial_num":     question.SerialNum,
-			"subject":        question.Subject,
-			"describe":       question.Description,
+
+		questionSettingResponse := map[string]any{
 			"required":       question.Required,
 			"unique":         question.Unique,
 			"other_option":   question.OtherOption,
-			"img":            question.Img,
 			"question_type":  question.QuestionType,
 			"reg":            question.Reg,
 			"maximum_option": question.MaximumOption,
 			"minimum_option": question.MinimumOption,
-			"options":        optionsResponse,
 		}
-		questionsResponse = append(questionsResponse, questionMap)
+
+		questionListMap := map[string]any{
+			"id":           question.ID,
+			"serial_num":   question.SerialNum,
+			"subject":      question.Subject,
+			"description":  question.Description,
+			"img":          question.Img,
+			"ques_setting": questionSettingResponse,
+			"options":      optionsResponse,
+		}
+		questionListsResponse = append(questionListsResponse, questionListMap)
+	}
+
+	questionsConfigResponse := map[string]any{
+		"title":         survey.Title,
+		"desc":          survey.Desc,
+		"question_list": questionListsResponse,
+	}
+	baseConfigResponse := map[string]any{
+		"start_time": survey.StartTime,
+		"end_time":   survey.Deadline,
+		"day_limit":  survey.DailyLimit,
+		"verify":     survey.Verify,
 	}
 	response := map[string]any{
 		"id":          survey.ID,
-		"title":       survey.Title,
-		"time":        survey.Deadline,
-		"desc":        survey.Desc,
-		"img":         survey.Img,
-		"daily_limit": survey.DailyLimit,
-		"verify":      survey.Verify,
+		"status":      survey.Status,
 		"survey_type": survey.Type,
-		"start_time":  survey.StartTime,
-		"questions":   questionsResponse,
+		"base_config": baseConfigResponse,
+		"ques_config": questionsConfigResponse,
 	}
 
 	utils.JsonSuccessResponse(c, response)
@@ -245,7 +251,13 @@ func GetSurvey(c *gin.Context) {
 func UploadImg(c *gin.Context) {
 	url, err := service.HandleImgUpload(c)
 	if err != nil {
-		code.AbortWithException(c, code.ServerError, err)
+		if err.Error() == "图片大小超出限制" {
+			code.AbortWithException(c, code.PictureSizeError, err)
+		} else if err.Error() == "仅允许上传图片文件" {
+			code.AbortWithException(c, code.PictureError, err)
+		} else {
+			code.AbortWithException(c, code.ServerError, err)
+		}
 		return
 	}
 	utils.JsonSuccessResponse(c, url)

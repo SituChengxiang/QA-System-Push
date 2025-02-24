@@ -14,20 +14,16 @@ import (
 	"QA-System/internal/pkg/utils"
 	"QA-System/internal/service"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 	"gorm.io/gorm"
 )
 
 type createSurveyData struct {
-	Title      string         `json:"title"`
-	Desc       string         `json:"desc" `
-	Img        string         `json:"img" `
-	Status     int            `json:"status" binding:"required,oneof=1 2"`
-	StartTime  string         `json:"start_time"`
-	Time       string         `json:"time"`
-	DailyLimit uint           `json:"day_limit"`   // 问卷每日填写限制
-	SurveyType uint           `json:"survey_type"` // 问卷类型 0:调研 1:投票
-	Verify     bool           `json:"verify"`      // 问卷是否需要统一验证
-	Questions  []dao.Question `json:"questions"`
+	Status         int                `json:"status" binding:"required,oneof=1 2"`
+	SurveyType     uint               `json:"survey_type"` // 问卷类型 0:调研 1:投票
+	BaseConfig     dao.BaseConfig     `json:"base_config"` // 基本配置
+	QuestionConfig dao.QuestionConfig `json:"ques_config"` // 问题设置
 }
 
 // CreateSurvey 创建问卷
@@ -45,12 +41,12 @@ func CreateSurvey(c *gin.Context) {
 		return
 	}
 	// 解析时间转换为中国时间(UTC+8)
-	ddlTime, err := time.Parse(time.RFC3339, data.Time)
+	ddlTime, err := time.Parse(time.RFC3339, data.BaseConfig.EndTime)
 	if err != nil {
 		code.AbortWithException(c, code.ServerError, err)
 		return
 	}
-	startTime, err := time.Parse(time.RFC3339, data.StartTime)
+	startTime, err := time.Parse(time.RFC3339, data.BaseConfig.StartTime)
 	if err != nil {
 		code.AbortWithException(c, code.ServerError, err)
 		return
@@ -61,8 +57,8 @@ func CreateSurvey(c *gin.Context) {
 	}
 	// 检查问卷每个题目的序号没有重复且按照顺序递增
 	questionNumMap := make(map[int]bool)
-	for i, question := range data.Questions {
-		if data.SurveyType == 2 && (question.QuestionType != 2 && !question.Required) {
+	for i, question := range data.QuestionConfig.QuestionList {
+		if data.SurveyType == 2 && (question.QuestionSetting.QuestionType != 2 && !question.QuestionSetting.Required) {
 			code.AbortWithException(c, code.SurveyError, errors.New("投票题目只能为多选必填题"))
 			return
 		}
@@ -70,7 +66,7 @@ func CreateSurvey(c *gin.Context) {
 			code.AbortWithException(c, code.SurveyError, errors.New("题目序号"+strconv.Itoa(question.SerialNum)+"重复"))
 			return
 		}
-		if i > 0 && question.SerialNum != data.Questions[i-1].SerialNum+1 {
+		if i > 0 && question.SerialNum != data.QuestionConfig.QuestionList[i-1].SerialNum+1 {
 			code.AbortWithException(c, code.SurveyError, errors.New("题目序号不按顺序递增"))
 			return
 		}
@@ -78,35 +74,35 @@ func CreateSurvey(c *gin.Context) {
 		question.SerialNum = i + 1
 
 		// 检测多选题目的最多选项数和最少选项数
-		if (question.QuestionType == 2 && data.SurveyType == 0) ||
-			(question.QuestionType == 1 && data.SurveyType == 1) &&
-				(question.MaximumOption < question.MinimumOption) {
+		if (question.QuestionSetting.QuestionType == 2 && data.SurveyType == 0) ||
+			(question.QuestionSetting.QuestionType == 1 && data.SurveyType == 1) &&
+				(question.QuestionSetting.MaximumOption < question.QuestionSetting.MinimumOption) {
 			code.AbortWithException(c, code.OptionNumError, errors.New("多选最多选项数小于最少选项数"))
 			return
 		}
 		// 检查多选选项和最少选项数是否符合要求
-		if (question.QuestionType == 2 && data.SurveyType == 0) ||
-			(question.QuestionType == 1 && data.SurveyType == 1) &&
-				uint(len(question.Options)) < question.MinimumOption {
+		if (question.QuestionSetting.QuestionType == 2 && data.SurveyType == 0) ||
+			(question.QuestionSetting.QuestionType == 1 && data.SurveyType == 1) &&
+				uint(len(question.Options)) < question.QuestionSetting.MinimumOption {
 			code.AbortWithException(c, code.OptionNumError, errors.New("选项数量小于最少选项数"))
 			return
 		}
 		// 检查最多选项数是否符合要求
-		if (question.QuestionType == 2 && data.SurveyType == 0) ||
-			(question.QuestionType == 1 && data.SurveyType == 1) &&
-				question.MaximumOption <= 0 {
+		if (question.QuestionSetting.QuestionType == 2 && data.SurveyType == 0) ||
+			(question.QuestionSetting.QuestionType == 1 && data.SurveyType == 1) &&
+				question.QuestionSetting.MaximumOption == 0 {
 			code.AbortWithException(c, code.OptionNumError, errors.New("最多选项数小于等于0"))
 			return
 		}
 	}
 	// 检测问卷是否填写完整
 	if data.Status == 2 {
-		if data.Title == "" || len(data.Questions) == 0 {
+		if data.QuestionConfig.Title == "" || len(data.QuestionConfig.QuestionList) == 0 {
 			code.AbortWithException(c, code.SurveyIncomplete, errors.New("问卷标题为空或问卷没有问题"))
 			return
 		}
 		questionMap := make(map[string]bool)
-		for _, question := range data.Questions {
+		for _, question := range data.QuestionConfig.QuestionList {
 			if question.Subject == "" {
 				code.AbortWithException(c, code.SurveyIncomplete,
 					errors.New("问题"+strconv.Itoa(question.SerialNum)+"标题为空"))
@@ -118,7 +114,7 @@ func CreateSurvey(c *gin.Context) {
 				return
 			}
 			questionMap[question.Subject] = true
-			if question.QuestionType == 1 || question.QuestionType == 2 {
+			if question.QuestionSetting.QuestionType == 1 || question.QuestionSetting.QuestionType == 2 {
 				if len(question.Options) < 1 {
 					code.AbortWithException(c, code.SurveyIncomplete,
 						errors.New("问题"+strconv.Itoa(question.SerialNum)+"选项数量太少"))
@@ -142,8 +138,8 @@ func CreateSurvey(c *gin.Context) {
 		}
 	}
 	// 创建问卷
-	err = service.CreateSurvey(user.ID, data.Title, data.Desc, data.Img, data.Questions,
-		data.Status, data.SurveyType, data.DailyLimit, data.Verify, ddlTime, startTime)
+	err = service.CreateSurvey(user.ID, data.QuestionConfig.QuestionList, data.Status, data.
+		SurveyType, data.BaseConfig.DailyLimit, data.BaseConfig.Verify, ddlTime, startTime)
 	if err != nil {
 		code.AbortWithException(c, code.ServerError, err)
 		return
@@ -252,16 +248,10 @@ func UpdateSurveyStatus(c *gin.Context) {
 }
 
 type updateSurveyData struct {
-	ID         int            `json:"id" binding:"required"`
-	Title      string         `json:"title"`
-	Desc       string         `json:"desc" `
-	Img        string         `json:"img" `
-	Time       string         `json:"time"`
-	StartTime  string         `json:"start_time"`
-	DailyLimit uint           `json:"day_limit"`   // 问卷每日填写限制
-	SurveyType uint           `json:"survey_type"` // 问卷类型 1:调研 2:投票
-	Verify     bool           `json:"verify"`      // 问卷是否需要统一验证
-	Questions  []dao.Question `json:"questions"`
+	ID             int                `json:"id" binding:"required"`
+	SurveyType     uint               `json:"survey_type"` // 问卷类型 0:调研 1:投票
+	BaseConfig     dao.BaseConfig     `json:"base_config"` // 基本配置
+	QuestionConfig dao.QuestionConfig `json:"ques_config"` // 问题设置
 }
 
 // UpdateSurvey 修改问卷
@@ -301,12 +291,12 @@ func UpdateSurvey(c *gin.Context) {
 		return
 	}
 	// 解析时间转换为中国时间(UTC+8)
-	ddlTime, err := time.Parse(time.RFC3339, data.Time)
+	ddlTime, err := time.Parse(time.RFC3339, data.BaseConfig.EndTime)
 	if err != nil {
 		code.AbortWithException(c, code.ServerError, err)
 		return
 	}
-	startTime, err := time.Parse(time.RFC3339, data.StartTime)
+	startTime, err := time.Parse(time.RFC3339, data.BaseConfig.StartTime)
 	if err != nil {
 		code.AbortWithException(c, code.ServerError, err)
 		return
@@ -317,12 +307,12 @@ func UpdateSurvey(c *gin.Context) {
 	}
 	// 检查问卷每个题目的序号没有重复且按照顺序递增
 	questionNumMap := make(map[int]bool)
-	for i, question := range data.Questions {
+	for i, question := range data.QuestionConfig.QuestionList {
 		if questionNumMap[question.SerialNum] {
 			code.AbortWithException(c, code.SurveyError, errors.New("题目序号"+strconv.Itoa(question.SerialNum)+"重复"))
 			return
 		}
-		if i > 0 && question.SerialNum != data.Questions[i-1].SerialNum+1 {
+		if i > 0 && question.SerialNum != data.QuestionConfig.QuestionList[i-1].SerialNum+1 {
 			code.AbortWithException(c, code.SurveyError, errors.New("题目序号不按顺序递增"))
 			return
 		}
@@ -330,30 +320,30 @@ func UpdateSurvey(c *gin.Context) {
 		question.SerialNum = i + 1
 
 		// 检测多选题目的最多选项数和最少选项数
-		if (question.QuestionType == 2 && survey.Type == 0) ||
-			(question.QuestionType == 1 && survey.Type == 1) &&
-				(question.MaximumOption < question.MinimumOption) {
+		if (question.QuestionSetting.QuestionType == 2 && data.SurveyType == 0) ||
+			(question.QuestionSetting.QuestionType == 1 && data.SurveyType == 1) &&
+				(question.QuestionSetting.MaximumOption < question.QuestionSetting.MinimumOption) {
 			code.AbortWithException(c, code.OptionNumError, errors.New("多选最多选项数小于最少选项数"))
 			return
 		}
 		// 检查多选选项和最少选项数是否符合要求
-		if (question.QuestionType == 2 && survey.Type == 0) ||
-			(question.QuestionType == 1 && survey.Type == 1) &&
-				uint(len(question.Options)) < question.MinimumOption {
+		if (question.QuestionSetting.QuestionType == 2 && data.SurveyType == 0) ||
+			(question.QuestionSetting.QuestionType == 1 && data.SurveyType == 1) &&
+				uint(len(question.Options)) < question.QuestionSetting.MinimumOption {
 			code.AbortWithException(c, code.OptionNumError, errors.New("选项数量小于最少选项数"))
 			return
 		}
 		// 检查最多选项数是否符合要求
-		if (question.QuestionType == 2 && survey.Type == 0) ||
-			(question.QuestionType == 1 && survey.Type == 1) &&
-				question.MaximumOption <= 0 {
+		if (question.QuestionSetting.QuestionType == 2 && data.SurveyType == 0) ||
+			(question.QuestionSetting.QuestionType == 1 && data.SurveyType == 1) &&
+				question.QuestionSetting.MaximumOption == 0 {
 			code.AbortWithException(c, code.OptionNumError, errors.New("最多选项数小于等于0"))
 			return
 		}
 	}
 	// 修改问卷
-	err = service.UpdateSurvey(data.ID, data.SurveyType, data.DailyLimit,
-		data.Verify, data.Title, data.Desc, data.Img, data.Questions, ddlTime, startTime)
+	err = service.UpdateSurvey(data.ID, data.QuestionConfig, data.SurveyType, data.BaseConfig.DailyLimit, data.
+		BaseConfig.Verify, data.QuestionConfig.Desc, data.QuestionConfig.Title, ddlTime, startTime)
 	if err != nil {
 		code.AbortWithException(c, code.ServerError, err)
 		return
@@ -449,9 +439,14 @@ func GetSurveyAnswers(c *gin.Context) {
 	var num *int64
 	answers, num, err := service.GetSurveyAnswers(data.ID, data.PageNum, data.PageSize, data.Text, data.Unique)
 	if err != nil {
-		code.AbortWithException(c, code.ServerError, err)
+		if err.Error() == "页数超出范围" {
+			code.AbortWithException(c, code.PageBeyondError, err)
+		} else {
+			code.AbortWithException(c, code.ServerError, err)
+		}
 		return
 	}
+
 	utils.JsonSuccessResponse(c, gin.H{
 		"answers_data":   answers,
 		"total_page_num": math.Ceil(float64(*num) / float64(data.PageSize)),
@@ -551,7 +546,7 @@ func GetSurvey(c *gin.Context) {
 		return
 	}
 	// 构建问卷响应
-	questionsResponse := make([]map[string]any, 0)
+	questionListsResponse := make([]map[string]any, 0)
 	for _, question := range questions {
 		options, err := service.GetOptionsByQuestionID(question.ID)
 		if err != nil {
@@ -561,42 +556,54 @@ func GetSurvey(c *gin.Context) {
 		optionsResponse := make([]map[string]any, 0)
 		for _, option := range options {
 			optionResponse := map[string]any{
-				"img":         option.Img,
-				"content":     option.Content,
-				"description": option.Description,
+				"id":          option.ID,
 				"serial_num":  option.SerialNum,
+				"content":     option.Content,
+				"img":         option.Img,
+				"description": option.Description,
 			}
 			optionsResponse = append(optionsResponse, optionResponse)
 		}
-		questionMap := map[string]any{
-			"id":             question.SerialNum,
-			"serial_num":     question.SerialNum,
-			"subject":        question.Subject,
-			"description":    question.Description,
+
+		questionSettingResponse := map[string]any{
 			"required":       question.Required,
 			"unique":         question.Unique,
 			"other_option":   question.OtherOption,
-			"img":            question.Img,
 			"question_type":  question.QuestionType,
 			"reg":            question.Reg,
 			"maximum_option": question.MaximumOption,
 			"minimum_option": question.MinimumOption,
-			"options":        optionsResponse,
 		}
-		questionsResponse = append(questionsResponse, questionMap)
+
+		questionListMap := map[string]any{
+			"id":           question.ID,
+			"serial_num":   question.SerialNum,
+			"subject":      question.Subject,
+			"description":  question.Description,
+			"img":          question.Img,
+			"ques_setting": questionSettingResponse,
+			"options":      optionsResponse,
+		}
+		questionListsResponse = append(questionListsResponse, questionListMap)
+	}
+
+	questionsConfigResponse := map[string]any{
+		"title":         survey.Title,
+		"desc":          survey.Desc,
+		"question_list": questionListsResponse,
+	}
+	baseConfigResponse := map[string]any{
+		"start_time": survey.StartTime,
+		"end_time":   survey.Deadline,
+		"day_limit":  survey.DailyLimit,
+		"verify":     survey.Verify,
 	}
 	response := map[string]any{
 		"id":          survey.ID,
-		"title":       survey.Title,
-		"time":        survey.Deadline,
-		"desc":        survey.Desc,
-		"img":         survey.Img,
 		"status":      survey.Status,
 		"survey_type": survey.Type,
-		"verify":      survey.Verify,
-		"day_limit":   survey.DailyLimit,
-		"start_time":  survey.StartTime,
-		"questions":   questionsResponse,
+		"base_config": baseConfigResponse,
+		"ques_config": questionsConfigResponse,
 	}
 
 	utils.JsonSuccessResponse(c, response)
@@ -895,4 +902,51 @@ func ensureMap(m map[int]map[int]int, key int) map[int]int {
 		m[key] = make(map[int]int)
 	}
 	return m[key]
+}
+
+type deleteAnswerSheetData struct {
+	AnswerID string `bson:"_id" form:"answer_id" binding:"required"`
+}
+
+// DeleteAnswerSheet 删除答卷
+func DeleteAnswerSheet(c *gin.Context) {
+	var data deleteAnswerSheetData
+	err := c.ShouldBindQuery(&data)
+	if err != nil {
+		code.AbortWithException(c, code.ParamError, err)
+		return
+	}
+	// 鉴权
+	user, err := service.GetUserSession(c)
+	if err != nil {
+		code.AbortWithException(c, code.NotLogin, err)
+		return
+	}
+
+	// 将 AnswerID 转换为 ObjectID
+	objectID, err := primitive.ObjectIDFromHex(data.AnswerID)
+	if err != nil {
+		code.AbortWithException(c, code.ServerError, err)
+	}
+	// 获取问卷
+	err = service.GetAnswerSheetByAnswerID(objectID)
+	if errors.Is(err, mongo.ErrNoDocuments) {
+		code.AbortWithException(c, code.AnswerSheetNotExist, errors.New("答卷不存在"))
+		return
+	} else if err != nil {
+		code.AbortWithException(c, code.ServerError, err)
+		return
+	}
+	// 判断权限
+	if user.AdminType != 2 {
+		code.AbortWithException(c, code.NoPermission, errors.New(user.Username+"无权限"))
+		return
+	}
+	// 删除答卷
+	err = service.DeleteAnswerSheetByAnswerID(objectID)
+	if err != nil {
+		code.AbortWithException(c, code.ServerError, err)
+		return
+	}
+	utils.JsonSuccessResponse(c, nil)
 }
