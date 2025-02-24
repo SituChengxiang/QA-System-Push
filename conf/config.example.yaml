@@ -10,9 +10,9 @@ mysql:
   pass:
 
 
- session:
-   name: QA-session
-   secret: secret
+session:
+  name: QA-session
+  secret: secret
 
 redis:
   host: "127.0.0.1"
