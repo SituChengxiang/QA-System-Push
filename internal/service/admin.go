@@ -14,6 +14,7 @@ import (
 	"QA-System/internal/pkg/utils"
 
 	"github.com/xuri/excelize/v2"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // GetAdminByUsername 根据用户名获取管理员
@@ -97,14 +98,10 @@ func CheckPermission(id int, surveyID int) error {
 }
 
 // CreateSurvey 创建问卷
-func CreateSurvey(id int, title string, desc string, img string, questions []dao.Question,
-	status int, surveyType, limit uint, verify bool, ddl, startTime time.Time,
-) error {
+func CreateSurvey(id int, question_list []dao.
+	QuestionList, status int, surveyType, limit uint, verify bool, ddl, startTime time.Time) error {
 	var survey model.Survey
 	survey.UserID = id
-	survey.Title = title
-	survey.Desc = desc
-	survey.Img = img
 	survey.Status = status
 	survey.Deadline = ddl
 	survey.Type = surveyType
@@ -115,7 +112,7 @@ func CreateSurvey(id int, title string, desc string, img string, questions []dao
 	if err != nil {
 		return err
 	}
-	_, err = createQuestionsAndOptions(questions, survey.ID)
+	_, err = createQuestionsAndOptions(question_list, survey.ID)
 	return err
 }
 
@@ -126,9 +123,8 @@ func UpdateSurveyStatus(id int, status int) error {
 }
 
 // UpdateSurvey 更新问卷
-func UpdateSurvey(id int, surveyType, limit uint, verify bool, title string, desc string,
-	img string, questions []dao.Question, ddl, startTime time.Time,
-) error {
+func UpdateSurvey(id int, question_config dao.QuestionConfig, surveyType,
+	limit uint, verify bool, desc string, title string, ddl, startTime time.Time) error {
 	// 遍历原有问题，删除对应选项
 	var oldQuestions []model.Question
 	var old_imgs []string
@@ -138,7 +134,7 @@ func UpdateSurvey(id int, surveyType, limit uint, verify bool, title string, des
 	if err != nil {
 		return err
 	}
-	old_imgs, err = getOldImgs(id, oldQuestions)
+	old_imgs, err = getOldImgs(oldQuestions)
 	if err != nil {
 		return err
 	}
@@ -168,13 +164,13 @@ func UpdateSurvey(id int, surveyType, limit uint, verify bool, title string, des
 		}
 	}
 	// 修改问卷信息
-	err = d.UpdateSurvey(ctx, id, surveyType, limit, verify, title, desc, img, ddl, startTime)
+	err = d.UpdateSurvey(ctx, id, surveyType, limit, verify, desc, title, ddl, startTime)
 	if err != nil {
 		return err
 	}
-	new_imgs = append(new_imgs, img)
+	new_imgs = append(new_imgs, question_config.QuestionList[1].Img)
 	// 重新添加问题和选项
-	imgs, err := createQuestionsAndOptions(questions, id)
+	imgs, err := createQuestionsAndOptions(question_config.QuestionList, id)
 	if err != nil {
 		return err
 	}
@@ -211,7 +207,7 @@ func DeleteSurvey(id int) error {
 		return err
 	}
 	// 删除图片
-	imgs, err := getDelImgs(id, questions, answerSheets)
+	imgs, err := getDelImgs(questions, answerSheets)
 	if err != nil {
 		return err
 	}
@@ -270,6 +266,7 @@ func GetSurveyAnswers(id int, num int, size int, text string, unique bool) (dao.
 	var answerSheets []dao.AnswerSheet
 	data := make([]dao.QuestionAnswers, 0)
 	times := make([]string, 0)
+	aids := make([]primitive.ObjectID, 0)
 	var total *int64
 	// 获取问题
 	questions, err := d.GetQuestionsBySurveyID(ctx, id)
@@ -292,6 +289,7 @@ func GetSurveyAnswers(id int, num int, size int, text string, unique bool) (dao.
 	// 填充data
 	for _, answerSheet := range answerSheets {
 		times = append(times, answerSheet.Time)
+		aids = append(aids, answerSheet.AnswerID)
 		for _, answer := range answerSheet.Answers {
 			question, err := d.GetQuestionByID(ctx, answer.QuestionID)
 			if err != nil {
@@ -304,7 +302,7 @@ func GetSurveyAnswers(id int, num int, size int, text string, unique bool) (dao.
 			}
 		}
 	}
-	return dao.AnswersResonse{QuestionAnswers: data, Time: times}, total, nil
+	return dao.AnswersResonse{QuestionAnswers: data, AnswerIDs: aids, Time: times}, total, nil
 }
 
 // GetSurveyByUserID 获取用户的所有问卷
@@ -450,18 +448,13 @@ func contains(arr []string, str string) bool {
 	return false
 }
 
-// getOldImgs 获取旧的图片
-func getOldImgs(id int, questions []model.Question) ([]string, error) {
+// getOldImgs 获取老旧图片（解决lint）
+func getOldImgs(questions []model.Question) ([]string, error) {
 	imgs := make([]string, 0)
-	survey, err := d.GetSurveyByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	imgs = append(imgs, survey.Img)
 	for _, question := range questions {
 		imgs = append(imgs, question.Img)
 		var options []model.Option
-		options, err = d.GetOptionsByQuestionID(ctx, question.ID)
+		options, err := d.GetOptionsByQuestionID(ctx, question.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -473,17 +466,12 @@ func getOldImgs(id int, questions []model.Question) ([]string, error) {
 }
 
 // getDelImgs 获取删除的图片
-func getDelImgs(id int, questions []model.Question, answerSheets []dao.AnswerSheet) ([]string, error) {
+func getDelImgs(questions []model.Question, answerSheets []dao.AnswerSheet) ([]string, error) {
 	imgs := make([]string, 0)
-	survey, err := d.GetSurveyByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	imgs = append(imgs, survey.Img)
 	for _, question := range questions {
 		imgs = append(imgs, question.Img)
 		var options []model.Option
-		options, err = d.GetOptionsByQuestionID(ctx, question.ID)
+		options, err := d.GetOptionsByQuestionID(ctx, question.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -522,29 +510,29 @@ func getDelFiles(answerSheets []dao.AnswerSheet) ([]string, error) {
 	return files, nil
 }
 
-// createQuestionsAndOptions 创建问题和选项
-func createQuestionsAndOptions(questions []dao.Question, sid int) ([]string, error) {
+// createQuestionsAndOptions 创建问题及选项
+func createQuestionsAndOptions(question_list []dao.QuestionList, sid int) ([]string, error) {
 	imgs := make([]string, 0)
-	for _, question := range questions {
+	for _, question_list := range question_list {
 		var q model.Question
-		q.SerialNum = question.SerialNum
+		q.SerialNum = question_list.SerialNum
 		q.SurveyID = sid
-		q.Subject = question.Subject
-		q.Description = question.Description
-		q.Img = question.Img
-		q.Required = question.Required
-		q.Unique = question.Unique
-		q.OtherOption = question.OtherOption
-		q.QuestionType = question.QuestionType
-		q.MaximumOption = question.MaximumOption
-		q.MinimumOption = question.MinimumOption
-		q.Reg = question.Reg
-		imgs = append(imgs, question.Img)
+		q.Subject = question_list.Subject
+		q.Description = question_list.Description
+		q.Img = question_list.Img
+		q.Required = question_list.QuestionSetting.Required
+		q.Unique = question_list.QuestionSetting.Unique
+		q.OtherOption = question_list.QuestionSetting.OtherOption
+		q.QuestionType = question_list.QuestionSetting.QuestionType
+		q.MaximumOption = question_list.QuestionSetting.MaximumOption
+		q.MinimumOption = question_list.QuestionSetting.MinimumOption
+		q.Reg = question_list.QuestionSetting.Reg
+		imgs = append(imgs, question_list.Img)
 		q, err := d.CreateQuestion(ctx, q)
 		if err != nil {
 			return nil, err
 		}
-		for _, option := range question.Options {
+		for _, option := range question_list.Options {
 			var o model.Option
 			o.Content = option.Content
 			o.QuestionID = q.ID
@@ -723,4 +711,16 @@ func GetQuestionPre(name string) ([]string, error) {
 // DeleteOauthRecord 删除统一记录
 func DeleteOauthRecord(sid int) error {
 	return d.DeleteRecordSheets(ctx, sid)
+}
+
+// DeleteAnswerSheetByAnswerID 根据问卷ID删除问卷
+func DeleteAnswerSheetByAnswerID(answerID primitive.ObjectID) error {
+	err := d.DeleteAnswerSheetByAnswerID(ctx, answerID)
+	return err
+}
+
+// GetAnswerSheetByAnswerID 根据答卷ID删除答卷
+func GetAnswerSheetByAnswerID(answerID primitive.ObjectID) error {
+	err := d.GetAnswerSheetByAnswerID(ctx, answerID)
+	return err
 }

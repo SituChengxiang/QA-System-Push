@@ -18,7 +18,7 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/nfnt/resize"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.uber.org/zap"
 )
 
@@ -55,6 +55,7 @@ func SubmitSurvey(sid int, data []dao.QuestionsList, t string) error {
 	answerSheet.SurveyID = sid
 	answerSheet.Time = t
 	answerSheet.Unique = true
+	answerSheet.AnswerID = primitive.NewObjectID()
 	qids := make([]int, 0)
 	for _, q := range data {
 		var answer dao.Answer
@@ -66,7 +67,6 @@ func SubmitSurvey(sid int, data []dao.QuestionsList, t string) error {
 			qids = append(qids, q.QuestionID)
 		}
 		answer.QuestionID = q.QuestionID
-		answer.SerialNum = q.SerialNum
 		answer.Content = q.Answer
 		answerSheet.Answers = append(answerSheet.Answers, answer)
 	}
@@ -192,9 +192,6 @@ func convertAndCompressImage(srcPath, dstPath string) error {
 		return fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	// 调整图像大小（根据需要进行调整）
-	resizedImg := resize.Resize(300, 0, srcImg, resize.Lanczos3)
-
 	// 创建新的JPG文件
 	dstFile, err := safeCreateFile(dstPath)
 	if err != nil {
@@ -202,7 +199,7 @@ func convertAndCompressImage(srcPath, dstPath string) error {
 	}
 
 	// 以JPG格式保存调整大小的图像，并设置压缩质量为90
-	err = jpeg.Encode(dstFile, resizedImg, &jpeg.Options{Quality: 90})
+	err = jpeg.Encode(dstFile, srcImg, &jpeg.Options{Quality: 100})
 	if err != nil {
 		return err
 	}
