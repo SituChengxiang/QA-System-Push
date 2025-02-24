@@ -52,7 +52,7 @@ git clone https://github.com/zjutjh/QA-System
 ```
 2. 更改配置文件
 ```sh
-mv conf/config.yaml.example conf/config.yaml
+mv conf/config.example.yaml conf/config.yaml
 ```
 3. 由于文件是本地存放,因此要创建文件存放的目录并给予权限
 ```sh

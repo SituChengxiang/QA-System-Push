@@ -66,7 +66,7 @@ func (pm *PluginManager) GetPlugin(name string) (Plugin, bool) {
 // LoadPlugins 从配置文件中加载插件并返回插件实例列表
 func (pm *PluginManager) LoadPlugins() ([]Plugin, error) {
 	pluginNames := config.Config.GetStringSlice("plugins.order")
-	zap.L().Info("Loading plugins from config",
+	zap.L().Info("Detecting plugins from config",
 		zap.Strings("plugin_names", pluginNames))
 	var pluginList []Plugin
 
